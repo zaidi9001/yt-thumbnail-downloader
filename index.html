@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Thumbnail Downloader</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.0.0/css/all.min.css">
+    <style>
+        .dark {
+            background-color: #1a1a1a;
+            color: #f0f0f0;
+        }
+        .thumbnail-container {
+            transition: all 0.3s ease;
+        }
+        .thumbnail-container:hover {
+            transform: scale(1.02);
+        }
+        .loading {
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="transition-colors duration-300 bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-5xl">
+        <!-- Header -->
+        <header class="flex justify-between items-center mb-8">
+            <h1 class="text-3xl font-bold text-purple-600">YouTube Thumbnail Downloader</h1>
+            <button id="darkModeToggle" class="p-2 rounded-full bg-gray-200 dark:bg-gray-700">
+                <i class="fas fa-moon text-gray-800 dark:hidden"></i>
+                <i class="fas fa-sun text-yellow-300 hidden dark:block"></i>
+            </button>
+        </header>
+        
+        <!-- Input Form -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+            <div class="flex flex-col md:flex-row md:items-center gap-4">
+                <div class="flex-grow">
+                    <label for="youtubeUrl" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Enter YouTube Video URL</label>
+                    <input type="text" id="youtubeUrl" placeholder="https://www.youtube.com/watch?v=..." 
+                        class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white">
+                </div>
+                <button id="fetchButton" class="px-6 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 transition-colors mt-2 md:mt-0 flex items-center justify-center min-w-[120px]">
+                    <span id="buttonText">Fetch</span>
+                    <i id="loadingIcon" class="fas fa-spinner loading ml-2 hidden"></i>
+                </button>
+            </div>
+            <div id="errorMessage" class="mt-3 text-red-500 hidden"></div>
+        </div>
+        
+        <!-- Results Section -->
+        <div id="results" class="hidden">
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+                <h2 class="text-xl font-semibold mb-4 text-gray-800 dark:text-gray-200">Video Thumbnails</h2>
+                <div id="videoInfo" class="mb-6 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                    <!-- Video title will be placed here when available -->
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="thumbnailsContainer">
+                    <!-- Thumbnails will be placed here -->
+                </div>
+            </div>
+        </div>
+        
+        <!-- Ad Space -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4 text-gray-800 dark:text-gray-200">Advertisement</h2>
+            <div class="bg-gray-200 dark:bg-gray-700 h-32 flex items-center justify-center rounded-md">
+                <p class="text-gray-500 dark:text-gray-400">Ad Space</p>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <footer class="text-center text-sm text-gray-600 dark:text-gray-400 mt-8">
+            <p>© 2023 YouTube Thumbnail Downloader. All rights reserved.</p>
+            <p class="mt-1">This tool allows you to download thumbnails from any YouTube video.</p>
+        </footer>
+    </div>
+
+    <script>
+        // Dark Mode Toggle
+        const darkModeToggle = document.getElementById('darkModeToggle');
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        
+        // Set initial dark mode based on user preference
+        if (prefersDark || localStorage.getItem('darkMode') === 'true') {
+            document.body.classList.add('dark');
+            document.documentElement.classList.add('dark');
+        }
+        
+        darkModeToggle.addEventListener('click', () => {
+            document.body.classList.toggle('dark');
+            document.documentElement.classList.toggle('dark');
+            localStorage.setItem('darkMode', document.body.classList.contains('dark'));
+        });
+        
+        // YouTube Thumbnail Fetcher
+        const fetchButton = document.getElementById('fetchButton');
+        const urlInput = document.getElementById('youtubeUrl');
+        const results = document.getElementById('results');
+        const errorMessage = document.getElementById('errorMessage');
+        const thumbnailsContainer = document.getElementById('thumbnailsContainer');
+        const videoInfo = document.getElementById('videoInfo');
+        const buttonText = document.getElementById('buttonText');
+        const loadingIcon = document.getElementById('loadingIcon');
+        
+        fetchButton.addEventListener('click', fetchThumbnails);
+        urlInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                fetchThumbnails();
+            }
+        });
+        
+        function fetchThumbnails() {
+            // Show loading state
+            buttonText.textContent = 'Loading';
+            loadingIcon.classList.remove('hidden');
+            errorMessage.classList.add('hidden');
+            
+            const url = urlInput.value.trim();
+            const videoId = extractVideoId(url);
+            
+            if (!videoId) {
+                showError('Invalid YouTube URL. Please enter a valid YouTube video URL.');
+                return;
+            }
+            
+            // Clear previous results
+            thumbnailsContainer.innerHTML = '';
+            videoInfo.innerHTML = '';
+            
+            // Define thumbnail qualities
+            const thumbnails = [
+                { name: 'Maximum Resolution (HD)', quality: 'maxresdefault', width: '1280px', height: '720px' },
+                { name: 'High Quality', quality: 'hqdefault', width: '480px', height: '360px' },
+                { name: 'Medium Quality', quality: 'mqdefault', width: '320px', height: '180px' },
+                { name: 'Standard Definition', quality: 'sddefault', width: '640px', height: '480px' },
+                { name: 'Default Thumbnail', quality: 'default', width: '120px', height: '90px' },
+            ];
+            
+            // Display video info
+            videoInfo.innerHTML = `
+                <div class="flex-shrink-0">
+                    <img src="https://i.ytimg.com/vi/${videoId}/default.jpg" alt="Video Thumbnail" class="w-24 h-24 object-cover rounded-md">
+                </div>
+                <div>
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100">Video ID: ${videoId}</h3>
+                    <a href="https://www.youtube.com/watch?v=${videoId}" target="_blank" class="text-purple-600 hover:text-purple-800 dark:text-purple-400 dark:hover:text-purple-300 text-sm">
+                        Open Video on YouTube <i class="fas fa-external-link-alt text-xs ml-1"></i>
+                    </a>
+                </div>
+            `;
+            
+            // Create cards for each thumbnail quality
+            thumbnails.forEach(thumb => {
+                const thumbnailUrl = `https://i.ytimg.com/vi/${videoId}/${thumb.quality}.jpg`;
+                
+                // Create thumbnail card
+                const card = document.createElement('div');
+                card.className = 'thumbnail-container bg-white dark:bg-gray-700 rounded-lg overflow-hidden shadow-md transition-shadow hover:shadow-lg';
+                
+                // Check if thumbnail exists
+                checkImageExists(thumbnailUrl, () => {
+                    card.innerHTML = `
+                        <div class="p-3 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-600">
+                            <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300">${thumb.name}</h3>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">Size: ${thumb.width} × ${thumb.height}</p>
+                        </div>
+                        <div class="p-4">
+                            <img src="${thumbnailUrl}" alt="${thumb.name}" class="w-full h-auto rounded object-cover mb-4">
+                            <div class="flex justify-between items-center">
+                                <a href="${thumbnailUrl}" download="${videoId}_${thumb.quality}.jpg" class="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors text-sm flex items-center gap-2">
+                                    <i class="fas fa-download"></i>
+                                    Download
+                                </a>
+                                <a href="${thumbnailUrl}" target="_blank" class="text-purple-600 hover:text-purple-800 dark:text-purple-400 flex items-center gap-1 text-sm">
+                                    <i class="fas fa-external-link-alt"></i>
+                                    Open
+                                </a>
+                            </div>
+                        </div>
+                    `;
+                    thumbnailsContainer.appendChild(card);
+                    
+                    // Hide loading state if this is the last thumbnail
+                    if (thumbnailsContainer.children.length === 1) {
+                        results.classList.remove('hidden');
+                    }
+                }, () => {
+                    // Thumbnail doesn't exist - create placeholder
+                    card.innerHTML = `
+                        <div class="p-3 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-600">
+                            <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300">${thumb.name}</h3>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">Size: ${thumb.width} × ${thumb.height}</p>
+                        </div>
+                        <div class="p-4">
+                            <div class="w-full h-48 rounded bg-gray-200 dark:bg-gray-600 flex items-center justify-center mb-4">
+                                <p class="text-gray-500 dark:text-gray-400 text-sm">Not Available</p>
+                            </div>
+                        </div>
+                    `;
+                    thumbnailsContainer.appendChild(card);
+                });
+            });
+            
+            // Reset button state
+            setTimeout(() => {
+                buttonText.textContent = 'Fetch';
+                loadingIcon.classList.add('hidden');
+            }, 800);
+        }
+        
+        function extractVideoId(url) {
+            if (!url) return null;
+            
+            // Match patterns for YouTube URLs
+            const patterns = [
+                // youtu.be/ID
+                /youtu\.be\/([^?&]+)/,
+                // youtube.com/watch?v=ID
+                /youtube\.com\/watch\?v=([^&]+)/,
+                // youtube.com/embed/ID
+                /youtube\.com\/embed\/([^?&]+)/,
+                // youtube.com/v/ID
+                /youtube\.com\/v\/([^?&]+)/,
+                // youtube.com/shorts/ID
+                /youtube\.com\/shorts\/([^?&]+)/
+            ];
+            
+            for (const pattern of patterns) {
+                const match = url.match(pattern);
+                if (match) return match[1];
+            }
+            
+            return null;
+        }
+        
+        function checkImageExists(url, success, failure) {
+            const img = new Image();
+            img.onload = success;
+            img.onerror = failure;
+            img.src = url;
+        }
+        
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.classList.remove('hidden');
+            buttonText.textContent = 'Fetch';
+            loadingIcon.classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
